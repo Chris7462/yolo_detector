@@ -1,0 +1,7 @@
+yolo_detector_node:
+  ros__parameters:
+    model_path: "install/yolo_detector/share/yolo_detector/models"
+    yolo_model: "yolov8"  # yolo model version
+    model_file: "yolov8n.onnx"  # .onnx file.
+    classes_file: "classes.txt" # a text file with names of classes to label detected objects
+    nc: 80  # number of classes. Default is 80 (coming from COCO dataset)
