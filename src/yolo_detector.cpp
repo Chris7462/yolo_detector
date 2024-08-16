@@ -8,7 +8,6 @@
 #include <cv_bridge/cv_bridge.h>
 
 // local header
-// #include "yolo_detector/yolo_const.hpp"
 #include "yolo_detector/yolo_detector.hpp"
 
 
@@ -25,19 +24,44 @@ YoloDetector::YoloDetector()
   fs::path model_file = model_path / declare_parameter("model_file", std::string());
   fs::path classes_file = model_path / declare_parameter("classes_file", std::string());
   int nc = declare_parameter("nc", 80);
-  float conf_threshold = declare_parameter("conf_threshold", 0.5F);
+  double conf_threshold = declare_parameter("conf_threshold", 0.5);
+  double nms_threshold = declare_parameter("nms_threshold", 0.5);
 
-//  float confThreshold = parser.get<float>("thr");
-//  float nmsThreshold = parser.get<float>("nms");
-//  //![preprocess_params]
-//  float paddingValue = parser.get<float>("padvalue");
-//  bool swapRB = parser.get<bool>("rgb");
-//  int inpWidth = parser.get<int>("width");
-//  int inpHeight = parser.get<int>("height");
-//  Scalar scale = parser.get<float>("scale");
-//  Scalar mean = parser.get<Scalar>("mean");
-//  ImagePaddingMode paddingMode = static_cast<ImagePaddingMode>(parser.get<int>("paddingmode"));
-//  //![preprocess_params]
+  //![preprocess_params]
+  double mean = declare_parameter("mean", 0.0);
+  double scale = declare_parameter("scale", 1.0);
+  int input_width = declare_parameter("width", 640);
+  int input_height = declare_parameter("height", 640);
+  bool swap_rb = declare_parameter("rgb", true);
+  double padding_value = declare_parameter("padding_value", 114);
+  cv::dnn::ImagePaddingMode padding_mode = static_cast<cv::dnn::ImagePaddingMode>(declare_parameter("padding_mode", 2));
+
+
+  //![preprocess_params]
+
+//  rgb: True # Indicate that model works with RGB input images instead BGR ones.
+//  padvalue: 114.0 # padding value.
+//  paddingmode: 2 # Choose one of computation backends:
+//                 # "0: resize to required input size without extra processing",
+//                 # "1: Image will be cropped after resize",
+//                 # "2: Resize image to the desired size while preserving the aspect ratio of original image"
+//  backend: 0 # Choose one of computation backends:
+//             # "0: automatically (by default)"",
+//             # "1: Halide language (http://halide-lang.org/)",
+//             # "2: Intel's Deep Learning Inference Engine (https://software.intel.com/openvino-toolkit)",
+//             # "3: OpenCV implementation",
+//             # "4: VKCOM",
+//             # "5: CUDA"
+//  target: 0 # Choose one of target computation devices:
+//            # "0: CPU target (by default)",
+//            # "1: OpenCL",
+//            # "2: OpenCL fp16 (half-float precision)",
+//            # "3: VPU",
+//            # "4: Vulkan",
+//            # "6: CUDA",
+//            # "7: CUDA fp16 (half-float preprocess)"
+//  async: 0  # Number of asynchronous forwards at the same time.
+//            # "Choose 0 for synchronous mode
 
   // check if yolo model is valid
   if (yolo_model != "yolov5" && yolo_model != "yolov6" &&

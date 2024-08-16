@@ -15,6 +15,11 @@ find_package(sensor_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 
+# message(STATUS "OpenCV include dir =====> ${OpenCV_INCLUDE_DIRS}")
+# message(STATUS "OpenCV lib dir =====> ${OpenCV_INSTALL_PATH}")
+# message(STATUS "OpenCV version =====> ${OpenCV_VERSION}")
+# https://github.com/opencv/opencv/blob/master/cmake/templates/OpenCVConfig.cmake.in#L231
+
 add_executable(yolo_detector_node
   src/yolo_detector_node.cpp
   src/yolo_detector.cpp)
@@ -30,8 +35,10 @@ ament_target_dependencies(yolo_detector_node PUBLIC
   cv_bridge)
 
 target_link_libraries(yolo_detector_node PUBLIC
-  opencv_core
-  opencv_dnn)
+  ${OpenCV_LIBS})
+# opencv_imgproc
+# opencv_imgcodecs
+# opencv_dnn)
 
 target_compile_features(yolo_detector_node PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 
@@ -47,8 +54,8 @@ install(DIRECTORY params
 install(DIRECTORY rviz
   DESTINATION share/${PROJECT_NAME})
 
-# install(DIRECTORY models
-#   DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY models
+  DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

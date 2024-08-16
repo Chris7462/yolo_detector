@@ -37,10 +37,10 @@ def generate_launch_description():
         SetParameter(name='use_sim_time', value=True),
         bag_exec,
         rviz_node,
-        TimerAction(
-            period=1.0,  # delay these nodes for 1.0 seconds.
-            actions=[
-                yolo_detector_launch
-            ]
-        )
+        yolo_detector_launch
+        #   TimerAction(
+        #       period=1.0,  # delay these nodes for 1.0 seconds.
+        #       actions=[
+        #       ]
+        #   )
     ])

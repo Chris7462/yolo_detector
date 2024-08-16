@@ -1,7 +1,36 @@
 yolo_detector_node:
   ros__parameters:
     model_path: "install/yolo_detector/share/yolo_detector/models"
-    yolo_model: "yolov8"  # yolo model version
-    model_file: "yolov8n.onnx"  # .onnx file.
+    yolo_model: "yolov5"  # yolo model version
+    model_file: "yolov5n.onnx"  # .onnx file.
     classes_file: "classes.txt" # a text file with names of classes to label detected objects
     nc: 80  # number of classes. Default is 80 (coming from COCO dataset)
+    conf_threshold: 0.5  # Confidence threshold.
+    nms_threshold: 0.4  # Non-maximum suppression threshold.
+    mean: 0.0 # Normalization constant.
+    scale: 1.0  # Preprocess input image by multiplying on a scale factor.
+    width: 640  # Preprocess input image by resizing to a specific width.
+    height: 640 # Preprocess input image by resizing to a specific height.
+    rgb: True # Indicate that model works with RGB input images instead BGR ones.
+    padding_value: 114.0 # padding value.
+    padding_mode: 2 # Choose one of computation backends:
+                    # "0: resize to required input size without extra processing",
+                    # "1: Image will be cropped after resize",
+                    # "2: Resize image to the desired size while preserving the aspect ratio of original image"
+    backend: 0 # Choose one of computation backends:
+               # "0: automatically (by default)"",
+               # "1: Halide language (http://halide-lang.org/)",
+               # "2: Intel's Deep Learning Inference Engine (https://software.intel.com/openvino-toolkit)",
+               # "3: OpenCV implementation",
+               # "4: VKCOM",
+               # "5: CUDA"
+    target: 0 # Choose one of target computation devices:
+              # "0: CPU target (by default)",
+              # "1: OpenCL",
+              # "2: OpenCL fp16 (half-float precision)",
+              # "3: VPU",
+              # "4: Vulkan",
+              # "6: CUDA",
+              # "7: CUDA fp16 (half-float preprocess)"
+    async: 0  # Number of asynchronous forwards at the same time.
+              # "Choose 0 for synchronous mode
