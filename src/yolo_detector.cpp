@@ -23,45 +23,18 @@ YoloDetector::YoloDetector()
   std::string yolo_model = declare_parameter("yolo_model", std::string());
   fs::path model_file = model_path / declare_parameter("model_file", std::string());
   fs::path classes_file = model_path / declare_parameter("classes_file", std::string());
-  int nc = declare_parameter("nc", 80);
-  double conf_threshold = declare_parameter("conf_threshold", 0.5);
-  double nms_threshold = declare_parameter("nms_threshold", 0.5);
 
-  //![preprocess_params]
+  conf_threshold_ = declare_parameter("conf_threshold", 0.5F);
+  nms_threshold_ = declare_parameter("nms_threshold", 0.5F);
+  nc_ = declare_parameter("nc", 80);
   double mean = declare_parameter("mean", 0.0);
   double scale = declare_parameter("scale", 1.0);
   int input_width = declare_parameter("width", 640);
   int input_height = declare_parameter("height", 640);
   bool swap_rb = declare_parameter("rgb", true);
-  double padding_value = declare_parameter("padding_value", 114);
-  cv::dnn::ImagePaddingMode padding_mode = static_cast<cv::dnn::ImagePaddingMode>(declare_parameter("padding_mode", 2));
-
-
-  //![preprocess_params]
-
-//  rgb: True # Indicate that model works with RGB input images instead BGR ones.
-//  padvalue: 114.0 # padding value.
-//  paddingmode: 2 # Choose one of computation backends:
-//                 # "0: resize to required input size without extra processing",
-//                 # "1: Image will be cropped after resize",
-//                 # "2: Resize image to the desired size while preserving the aspect ratio of original image"
-//  backend: 0 # Choose one of computation backends:
-//             # "0: automatically (by default)"",
-//             # "1: Halide language (http://halide-lang.org/)",
-//             # "2: Intel's Deep Learning Inference Engine (https://software.intel.com/openvino-toolkit)",
-//             # "3: OpenCV implementation",
-//             # "4: VKCOM",
-//             # "5: CUDA"
-//  target: 0 # Choose one of target computation devices:
-//            # "0: CPU target (by default)",
-//            # "1: OpenCL",
-//            # "2: OpenCL fp16 (half-float precision)",
-//            # "3: VPU",
-//            # "4: Vulkan",
-//            # "6: CUDA",
-//            # "7: CUDA fp16 (half-float preprocess)"
-//  async: 0  # Number of asynchronous forwards at the same time.
-//            # "Choose 0 for synchronous mode
+  double padding_value = declare_parameter("padding_value", 114.0);
+  cv::dnn::ImagePaddingMode padding_mode =
+    static_cast<cv::dnn::ImagePaddingMode>(declare_parameter("padding_mode", 2));
 
   // check if yolo model is valid
   if (yolo_model != "yolov5" && yolo_model != "yolov6" &&
@@ -81,10 +54,27 @@ YoloDetector::YoloDetector()
     rclcpp::shutdown();
   }
 
+  // load model
   load_net(model_file);
 
-//// pre-process call
-//cv::Size size()
+  // image pre-processing
+  cv::Size size(input_width, input_height);
+  img_params_.scalefactor = scale;
+  img_params_.size = size;
+  img_params_.mean = mean;
+  img_params_.swapRB = swap_rb;
+  img_params_.ddepth = CV_32F;
+  img_params_.datalayout = cv::dnn::DNN_LAYOUT_NCHW;
+  img_params_.paddingmode = padding_mode;
+  img_params_.borderValue = padding_value;
+
+  // rescale boxes back to original image
+  cv::dnn::Image2BlobParams param_net;
+  param_net_.scalefactor = scale;
+  param_net_.size = size;
+  param_net_.mean = mean;
+  param_net_.swapRB = swap_rb;
+  param_net_.paddingmode = padding_mode;
 
   rclcpp::QoS qos(10);
   img_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
@@ -119,10 +109,26 @@ void YoloDetector::timer_callback()
       img_buff_.pop();
       mtx_.unlock();
 
-//    try {
-//      cv::Mat cv_image = cv_bridge::toCvCopy(input_msg, "bgr8")->image;
-//      std::vector<Detection> detections;
-//      detect(cv_image, detections);
+      try {
+        cv::Mat cv_image = cv_bridge::toCvCopy(input_msg, "bgr8")->image;
+        cv::Mat input_image = cv::dnn::blobFromImageWithParams(cv_image, img_params_);
+
+        net_.setInput(cv_image);
+
+        // forward
+        std::vector<cv::Mat> outs;
+        net_.forward(outs, net_.getUnconnectedOutLayersNames());
+
+        std::vector<int> keep_class_ids;
+        std::vector<float> keep_confidences;
+        std::vector<cv::Rect2d> keep_boxes;
+
+        // post processing
+//      post_processing(outs, keep_class_ids, keep_confidences, keep_boxes,
+//          conuThreshold, nmsThreshold,
+//          yolo_model,
+//          nc);
+
 
 //      for (const auto & detection : detections) {
 //        auto box = detection.box;
@@ -144,9 +150,9 @@ void YoloDetector::timer_callback()
 //      out_msg->header.stamp = current_time;
 //      yolo_pub_->publish(*out_msg);
 
-//    } catch (cv_bridge::Exception & e) {
-//      RCLCPP_ERROR(get_logger(), "CV_Bridge exception: %s", e.what());
-//    }
+      } catch (cv_bridge::Exception & e) {
+        RCLCPP_ERROR(get_logger(), "CV_Bridge exception: %s", e.what());
+      }
     }
   }
 }
@@ -180,16 +186,89 @@ void YoloDetector::load_net(fs::path model_file)
   }
 }
 
-//  cv::Mat YoloDetector::format_yolov5(const cv::Mat & source)
-//  {
-//    int col = source.cols;
-//    int row = source.rows;
-//    int max = std::max(col, row);
-//    cv::Mat result = cv::Mat::zeros(max, max, CV_8UC3);
-//    source.copyTo(result(cv::Rect(0, 0, col, row)));
+void YoloDetector::post_processing(std::vector<cv::Mat>& outs,
+  std::vector<int>& keep_classIds, std::vector<float>& keep_confidences,
+  std::vector<cv::Rect2d>& keep_boxes, float conf_threshold,
+  float iou_threshold, const std::string& model_name, const int nc)
+{
+  // Retrieve
+  std::vector<int> classIds;
+  std::vector<float> confidences;
+  std::vector<cv::Rect2d> boxes;
 
-//    return result;
-//  }
+  if (model_name == "yolov8" || model_name == "yolov10" || model_name == "yolov9") {
+    cv::transposeND(outs[0], {0, 2, 1}, outs[0]);
+  }
+
+  if (model_name == "yolonas") {
+    // outs contains 2 elemets of shape [1, 8400, 80] and [1, 8400, 4]. Concat them to get [1, 8400, 84]
+    cv::Mat concat_out;
+    // squeeze the first dimension
+    outs[0] = outs[0].reshape(1, outs[0].size[1]);
+    outs[1] = outs[1].reshape(1, outs[1].size[1]);
+    cv::hconcat(outs[1], outs[0], concat_out);
+    outs[0] = concat_out;
+    // remove the second element
+    outs.pop_back();
+    // unsqueeze the first dimension
+    outs[0] = outs[0].reshape(0, std::vector<int>{1, 8400, nc + 4});
+  }
+
+  // assert if last dim is 85 or 84
+  CV_CheckEQ(outs[0].dims, 3, "Invalid output shape. The shape should be [1, #anchors, 85 or 84]");
+  CV_CheckEQ((outs[0].size[2] == nc + 5 || outs[0].size[2] == 80 + 4), true, "Invalid output shape: ");
+
+  for (auto preds : outs) {
+    preds = preds.reshape(1, preds.size[1]); // [1, 8400, 85] -> [8400, 85]
+    for (int i = 0; i < preds.rows; ++i) {
+      // filter out non object
+      float obj_conf = (model_name == "yolov8" || model_name == "yolonas" ||
+        model_name == "yolov9" || model_name == "yolov10") ? 1.0f : preds.at<float>(i, 4);
+      if (obj_conf < conf_threshold) {
+        continue;
+      }
+
+      cv::Mat scores = preds.row(i).colRange(
+        (model_name == "yolov8" || model_name == "yolonas" || model_name == "yolov9" || model_name == "yolov10") ? 4 : 5, preds.cols);
+      double conf;
+      cv::Point maxLoc;
+      cv::minMaxLoc(scores, 0, &conf, 0, &maxLoc);
+
+      conf = (model_name == "yolov8" || model_name == "yolonas" || model_name == "yolov9" || model_name == "yolov10") ? conf : conf * obj_conf;
+      if (conf < conf_threshold) {
+        continue;
+      }
+
+      // get bbox coords
+      float* det = preds.ptr<float>(i);
+      double cx = det[0];
+      double cy = det[1];
+      double w = det[2];
+      double h = det[3];
+
+      // [x1, y1, x2, y2]
+      if (model_name == "yolonas" || model_name == "yolov10"){
+        boxes.push_back(cv::Rect2d(cx, cy, w, h));
+      } else {
+        boxes.push_back(
+          cv::Rect2d(cx - 0.5 * w, cy - 0.5 * h,cx + 0.5 * w, cy + 0.5 * h));
+      }
+      classIds.push_back(maxLoc.x);
+      confidences.push_back(static_cast<float>(conf));
+    }
+  }
+
+  // NMS
+  std::vector<int> keep_idx;
+  cv::dnn::NMSBoxes(boxes, confidences, conf_threshold, iou_threshold, keep_idx);
+
+  for (auto i : keep_idx) {
+    keep_classIds.push_back(classIds[i]);
+    keep_confidences.push_back(confidences[i]);
+    keep_boxes.push_back(boxes[i]);
+  }
+}
+
 
 //  void YoloDetector::detect(cv::Mat & image, std::vector<Detection> & output)
 //  {
